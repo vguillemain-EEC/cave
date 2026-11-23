@@ -1561,10 +1561,20 @@ async function analyser() {
   try {
     SCAN.blobs = await Promise.all(SCAN.fichiers.map((f) => compresser(f)));
     const images = await Promise.all(SCAN.blobs.map(async (b) => ({ data: await b64(b), type: "image/jpeg" })));
-    SCAN.res = await callFn("scan", { images });
+    const res = await callFn("scan", { images });
+    // Plusieurs vins différents sur les photos : on les enregistre l'un après l'autre
+    SCAN.tous = res?.vins?.length ? res.vins.map((v) => ({ ...v, duree_ms: res.duree_ms, sources: res.sources })) : [res];
+    SCAN.blobsTous = SCAN.blobs; scanVin(0);
+    if (SCAN.tous.length > 1) toast(`${SCAN.tous.length} vins différents détectés : ils seront ajoutés l'un après l'autre.`);
     vScan();
   } catch (e) { etat.innerHTML = `<p class="err">Analyse impossible : ${esc(e.message)}. Tu peux passer en saisie manuelle.</p>`; $("#go").disabled = false; }
 }
+function scanVin(i) {
+  SCAN.idx = i; const v = SCAN.tous[i]; SCAN.res = v;
+  const ph = (v.photos || []).map((k) => SCAN.blobsTous?.[k]).filter(Boolean);
+  SCAN.blobs = SCAN.tous.length > 1 ? ph : SCAN.blobsTous;
+}
+function vinSuivant() { if (SCAN.tous && SCAN.idx < SCAN.tous.length - 1) { scanVin(SCAN.idx + 1); vScan(); scrollTo(0, 0); return true; } return false; }
 function depuisWineapi(w) {
   if (!w) return {};
   const coul = { red: "rouge", white: "blanc", rose: "rose", rosé: "rose", sparkling: "effervescent", dessert: "liquoreux", fortified: "liquoreux" }[String(w.type || "").toLowerCase()];
@@ -1584,6 +1594,7 @@ function formulaireAjout(z) {
   const scores = r.wineapi?.scores || [];
   const prix = (r.wineapi?.prices || []).filter((p) => p.price != null);
   z.innerHTML = `<div class="grid">
+    ${SCAN.tous?.length > 1 ? `<div class="banner" style="grid-column:1/-1"><span><b>Vin ${SCAN.idx + 1} sur ${SCAN.tous.length}</b> · ${SCAN.tous.length} vins différents détectés sur tes photos. Vérifie celui-ci et ajoute-le : le suivant s'affichera ensuite.</span></div>` : ""}
     <section class="card c8"><div class="row" style="justify-content:space-between"><h2>${SCAN.mode === "saisie" ? "Saisie manuelle" : "Lu sur l'étiquette / Complété automatiquement"}</h2>${r.duree_ms ? `<span class="chip">${(r.duree_ms / 1000).toFixed(1)} s</span>` : ""}</div>
       ${SCAN.mode === "saisie" && !SCAN.res ? `<div class="form">${CHAMPS.slice(0, 11).map(([k, l, t]) => `<label class="f">${l}${champInput(k, t, "", "n")}</label>`).join("")}</div>` :
       `<div class="cmp4"><div class="cmpr h"><div>Champ</div><div>Étiquette</div><div>${esc(r.source || (r.wineapi ? "wineapi.io" : "Sources"))}</div><div>Valeur retenue</div></div>${lignes}</div>
@@ -1601,8 +1612,8 @@ function formulaireAjout(z) {
       <label class="f">Date d'achat<input id="n_date_achat" type="date" value="${new Date().toISOString().slice(0, 10)}"></label><label class="f">Fournisseur<input id="n_fournisseur" list="dl_fournisseur" autocomplete="off"><datalist id="dl_fournisseur">${listeValeurs("fournisseur").map((o) => `<option value="${esc(o)}">`).join("")}</datalist></label>
       ${choixEmplacement("n", true)}</div>
       ${SCAN.blobs?.length ? `<div class="preview">${SCAN.blobs.map((b) => `<img src="${URL.createObjectURL(b)}" alt="">`).join("")}</div><div class="muted" style="font-size:12px">Les ${SCAN.blobs.length} photos seront conservées avec la fiche.</div>` : ""}
-      <button class="btn primary" id="save">Ajouter à la cave</button><button class="btn" id="cancel">Annuler</button></section></div>`;
-  $("#cancel").onclick = () => { SCAN = { mode: SCAN.mode, fichiers: [], res: null }; vScan(); };
+      <button class="btn primary" id="save">Ajouter à la cave</button><button class="btn" id="cancel">${SCAN.tous?.length > 1 && SCAN.idx < SCAN.tous.length - 1 ? "Passer ce vin" : "Annuler"}</button></section></div>`;
+  $("#cancel").onclick = () => { if (vinSuivant()) return; SCAN = { mode: SCAN.mode, fichiers: [], res: null }; vScan(); };
   $("#save").onclick = enregistrerScan;
 }
 async function enregistrerScan() {
@@ -1643,9 +1654,11 @@ async function enregistrerScan() {
     // Prix estimé tout de suite (mémoire de Claude, vérifiée chez les cavistes en ligne pour les vins chers)
     let estime = "";
     if (row.valeur_unitaire == null) { btn.innerHTML = '<span class="spin"></span> Estimation du prix…'; attente("Estimation du prix", "Recherche chez les cavistes en ligne · merci de patienter"); try { if (await estimerClaude([vin])) estime = " · valeur estimée"; } catch (er) { console.warn(er); } finally { attente(null); } }
-    SCAN = { mode: "etiquette", fichiers: [], res: null };
     toast(`${n} bouteille${n > 1 ? "s" : ""} ajoutée${n > 1 ? "s" : ""}${estime}.`);
-    await charger(); go("vin-" + vin.id);
+    await charger();
+    if (vinSuivant()) return;
+    SCAN = { mode: "etiquette", fichiers: [], res: null };
+    go("vin-" + vin.id);
   } catch (e) { btn.disabled = false; btn.textContent = "Ajouter à la cave"; toast("Enregistrement impossible : " + e.message); }
 }
 
