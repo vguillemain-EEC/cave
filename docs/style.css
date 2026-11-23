@@ -493,3 +493,18 @@ body.attente .tabbar{display:none}
 @keyframes rgsug{50%{box-shadow:0 0 0 4px var(--wine-soft)}}
 .choix-rg{display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;padding:12px 14px;height:auto}
 .choix-rg small{font-weight:400;opacity:.8}
+/* Ranger case par case */
+.rg-zone{align-items:start}
+.rg-zone .rg-qui{grid-column:span 5}
+.rg-zone .rg-plan{grid-column:span 7}
+.rg-case{display:inline-block;padding:1px 10px;border-radius:8px;background:var(--wine);color:#fff;font-family:var(--mono,monospace)}
+.rg-vins{display:flex;flex-direction:column;gap:6px;max-height:56vh;overflow:auto}
+.rg-v{display:grid;grid-template-columns:34px 1fr auto;gap:10px;align-items:center;text-align:left;padding:6px 10px;border-radius:10px;border:1px solid var(--line,rgba(127,127,127,.25));background:var(--surface);color:var(--fg);cursor:pointer;touch-action:manipulation}
+.rg-v:hover{border-color:var(--wine)}
+.rg-v img{width:34px;height:44px;object-fit:cover;border-radius:6px}
+.rg-v span{display:flex;flex-direction:column;min-width:0}
+.rg-v b,.rg-v small{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rg-v small{color:var(--muted);font-size:12px}
+.rg-v em{font-style:normal;color:var(--muted);font-size:12px}
+.rg-v.dern{border:2px solid var(--wine);background:var(--wine-soft)}
+@media (max-width:900px){.rg-zone .rg-qui,.rg-zone .rg-plan{grid-column:1/-1}.rg-vins{max-height:none}}

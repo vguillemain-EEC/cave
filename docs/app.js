@@ -1700,15 +1700,16 @@ async function enregistrerScan() {
 
 /* ---------------- Ranger mes vins : un vin après l'autre, on touche la case ---------------- */
 const nomRg = (r) => r.nom || TYPES_RG[r.type] || "Rangement";
+const normE = (x) => String(x ?? "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
 const avecCases = (r) => !["caisse", "vrac"].includes(r.type) && r.lignes && r.colonnes;
 function rangerMesVins() {
   if (S.demo) return toast("Cave de démonstration : créez votre cave pour ranger vos vins.");
   if (!S.d.rangements.length) return toast("Crée d'abord tes casiers ou étagères (bouton « + Ajouter un rangement »).");
   const enC = S.d.bouteilles.filter((b) => b.statut === "en_cave"), non = enC.filter((b) => !b.rangement_id).length;
   if (!enC.length) return toast("Aucune bouteille en cave.");
-  const lancer = () => { S.rg = { file: fileRanger(), i: 0, hist: [] }; go("ranger"); };
+  const lancer = () => { S.rg = { mode: "case", file: fileRanger(), i: 0, pos: 1, hist: [], filtre: "" }; go("ranger"); };
   if (non === enC.length) return lancer();
-  modal(`<h2>Ranger mes vins</h2><p class="muted" style="margin:0">Les vins s'affichent un par un : il suffit de toucher la case où se trouve la bouteille.</p>
+  modal(`<h2>Ranger mes vins</h2><p class="muted" style="margin:0">Tu passes devant tes casiers case par case : pour chaque case, touche le vin qui s'y trouve.</p>
     <div class="stack" style="margin-top:12px">
       <button class="btn primary choix-rg" id="rg-rep" type="button" ${non ? "" : "disabled"}><b>Reprendre avec les vins non rangés</b><small>${non ? `${non} bouteille${non > 1 ? "s" : ""} à ranger` : "Toutes les bouteilles sont déjà rangées"}</small></button>
       <button class="btn choix-rg" id="rg-zero" type="button"><b>Tout recommencer de zéro</b><small>Les ${enC.length} bouteilles redeviennent non rangées, puis on les range une par une</small></button>
@@ -1732,7 +1733,8 @@ function fileRanger() {
   return S.d.bouteilles.filter((b) => b.statut === "en_cave" && !b.rangement_id && ordre.has(b.vin_id)).sort((a, b) => ordre.get(a.vin_id) - ordre.get(b.vin_id)).map((b) => b.id);
 }
 function vRanger() {
-  if (!S.rg) S.rg = { file: fileRanger(), i: 0, hist: [] };
+  if (!S.rg) S.rg = { mode: "case", file: fileRanger(), i: 0, pos: 1, hist: [], filtre: "" };
+  if (S.rg.mode === "case") return vRangerCase();
   const R = S.rg, rgs = S.d.rangements.slice().sort((a, b) => (a.cave_id === S.ui.cave ? -1 : 0) - (b.cave_id === S.ui.cave ? -1 : 0) || a.ordre - b.ordre);
   while (R.i < R.file.length && S.d.bouteilles.find((b) => b.id === R.file[R.i])?.rangement_id) R.i++;
   const b = S.d.bouteilles.find((x) => x.id === R.file[R.i]), v = b && S.d.vins.find((x) => x.id === b.vin_id);
@@ -1741,7 +1743,7 @@ function vRanger() {
   const fait = R.file.filter((id) => S.d.bouteilles.find((x) => x.id === id)?.rangement_id).length;
   const memeVin = b ? R.file.filter((id) => S.d.bouteilles.find((x) => x.id === id)?.vin_id === b.vin_id) : [], rangVin = memeVin.indexOf(b?.id) + 1;
   const plusieursCaves = S.d.caves.length > 1;
-  const head = `<div class="head"><div><div class="eyebrow">${fait} / ${R.file.length} rangée${fait > 1 ? "s" : ""}</div><h1>Ranger mes vins</h1></div><div class="row" style="gap:8px">${R.hist.length ? `<button class="btn" id="rg-undo">↶ Annuler le dernier</button>` : ""}<a class="btn" href="#vins">Terminer</a></div></div>
+  const head = `<div class="head"><div><div class="eyebrow">${fait} / ${R.file.length} rangée${fait > 1 ? "s" : ""}</div><h1>Ranger mes vins</h1></div><div class="row" style="gap:8px"><button class="btn" id="rg-mode">Case par case</button>${R.hist.length ? `<button class="btn" id="rg-undo">↶ Annuler le dernier</button>` : ""}<a class="btn" href="#vins">Terminer</a></div></div>
     <div class="rg-prog"><i style="width:${R.file.length ? Math.round((100 * fait) / R.file.length) : 100}%"></i></div>`;
   if (!b) {
     $("#view").innerHTML = head + `<section class="card empty"><h2>${R.file.length ? "Tout est rangé" : "Rien à ranger"}</h2><p class="muted">${R.file.length ? `${fait} bouteille${fait > 1 ? "s" : ""} rangée${fait > 1 ? "s" : ""}.` : "Toutes tes bouteilles ont déjà un emplacement."}${R.file.length - fait > 0 ? ` ${R.file.length - fait} passée${R.file.length - fait > 1 ? "s" : ""}, toujours non rangée${R.file.length - fait > 1 ? "s" : ""}.` : ""}</p><div class="row" style="justify-content:center">${R.file.length - fait > 0 ? `<button class="btn" id="rg-again">Reprendre les vins passés</button>` : ""}<a class="btn primary" href="#vins">Voir ma cave</a></div></section>`;
@@ -1777,6 +1779,7 @@ function vRanger() {
   if ($("#rg-vrac")) $("#rg-vrac").onclick = () => poser([{ rangement_id: r.id, ligne: null, colonne: null, emplacement: null }]);
   if ($("#rg-tabs")) $("#rg-tabs").onclick = (e) => { const t = e.target.closest("[data-r]"); if (t) { R.rid = t.dataset.r; vRanger(); } };
   $("#rg-pass").onclick = () => { R.i++; vRanger(); };
+  $("#rg-mode").onclick = () => { R.mode = "case"; vRanger(); };
   if ($("#rg-undo")) $("#rg-undo").onclick = annulerRangement;
   if ($("#rg-suite")) $("#rg-suite").onclick = () => {
     const [l0, c0] = sug.split("|").map(Number), n = memeVin.length - rangVin + 1, out = [];
@@ -1784,9 +1787,73 @@ function vRanger() {
     poser(out);
   };
 }
+
+// Case par case : l'app avance dans le casier (A1, A2…) et on touche le vin présent dans la case
+function vRangerCase() {
+  const R = S.rg, rgs = S.d.rangements.slice().sort((a, b) => (a.cave_id === S.ui.cave ? -1 : 0) - (b.cave_id === S.ui.cave ? -1 : 0) || a.ordre - b.ordre);
+  if (!rgs.find((r) => r.id === R.rid)) { R.rid = rgs[0]?.id; R.pos = 1; }
+  const r = rgs.find((x) => x.id === R.rid), cases = avecCases(r), pr = profRg(r);
+  const reste = aRangerVins(), total = reste.reduce((t, x) => t + x.n, 0), faits = R.hist.length;
+  const occ = new Map(); for (const x of S.d.bouteilles) if (x.statut === "en_cave" && x.rangement_id === r.id && x.ligne) { const k = `${x.ligne}|${x.colonne}`; (occ.get(k) || occ.set(k, []).get(k)).push(x); }
+  const libre = (l, c) => (occ.get(`${l}|${c}`)?.length || 0) < pr, nbCases = cases ? r.lignes * r.colonnes : 0;
+  // Case courante : la première case non pleine à partir de R.pos
+  let cur = null; if (cases) for (let i = Math.max(1, R.pos); i <= nbCases; i++) { const l = Math.ceil(i / r.colonnes), c = i - (l - 1) * r.colonnes; if (libre(l, c)) { cur = { i, l, c }; break; } }
+  const nomCase = (l, c) => `${labL(r, l)}${r.libelle_lignes === "ABC" ? "" : " "}${labC(r, c)}`;
+  const deja = cur ? occ.get(`${cur.l}|${cur.c}`) || [] : [];
+  const plusieursCaves = S.d.caves.length > 1;
+  const head = `<div class="head"><div><div class="eyebrow">${faits} rangée${faits > 1 ? "s" : ""} · ${total} à ranger</div><h1>Ranger mes vins</h1></div><div class="row" style="gap:8px"><button class="btn" id="rg-mode">Vin par vin</button>${R.hist.length ? `<button class="btn" id="rg-undo">↶ Annuler le dernier</button>` : ""}<a class="btn" href="#vins">Terminer</a></div></div>
+    <div class="rg-prog"><i style="width:${faits + total ? Math.round((100 * faits) / (faits + total)) : 100}%"></i></div>`;
+  if (!total) {
+    $("#view").innerHTML = head + `<section class="card empty"><h2>Tout est rangé</h2><p class="muted">${faits ? `${faits} bouteille${faits > 1 ? "s" : ""} rangée${faits > 1 ? "s" : ""}.` : "Toutes tes bouteilles ont déjà un emplacement."}</p><a class="btn primary" href="#vins">Voir ma cave</a></section>`;
+    $("#rg-mode").onclick = () => { R.mode = "vin"; R.file = fileRanger(); R.i = 0; vRanger(); }; if ($("#rg-undo")) $("#rg-undo").onclick = annulerRangement; return;
+  }
+  const cell = (l, c) => {
+    const ici = occ.get(`${l}|${c}`) || [], vv = ici.map((x) => S.d.vins.find((y) => y.id === x.vin_id)).filter(Boolean), lib = libre(l, c), i = (l - 1) * r.colonnes + c;
+    const tip = `${nomCase(l, c)}${vv.length ? " · " + vv.map((y) => y.domaine).join(" / ") : " · vide"}`;
+    return `<button type="button" class="rg-c${lib ? "" : " plein"}${ici.length && lib ? " moitie" : ""}${cur?.i === i ? " sug" : ""}" data-i="${i}" ${lib ? "" : "disabled"} title="${esc(tip)}" aria-label="${esc(tip)}">${vv[0] ? `<b style="background:${COL[vv[0].couleur] || "#888"}"></b><span>${esc(String(vv[0].domaine).slice(0, 4))}</span>` : `<span>${esc(labL(r, l))}${r.libelle_lignes === "ABC" ? "" : "·"}${esc(labC(r, c))}</span>`}</button>`;
+  };
+  const titre = !cases ? `Qu'y a-t-il dans ${esc(nomRg(r))} ?` : cur ? `Case <span class="rg-case">${esc(nomCase(cur.l, cur.c))}</span>${deja.length ? " · arrière" : ""}` : `${esc(nomRg(r))} est plein`;
+  $("#view").innerHTML = head + `
+    ${rgs.length > 1 ? `<div class="seg rg-tabs" id="rg-tabs">${rgs.map((x) => `<button data-r="${x.id}" aria-pressed="${x.id === r.id}">${esc(nomRg(x))}${plusieursCaves ? ` <small>${esc(S.d.caves.find((c) => c.id === x.cave_id)?.nom ?? "")}</small>` : ""}</button>`).join("")}</div>` : ""}
+    <div class="grid rg-zone"><section class="card rg-qui"><div class="row" style="justify-content:space-between;align-items:center"><h2 style="margin:0">${titre}</h2>${cases && cur ? `<button class="btn sm" id="rg-vide">Case vide →</button>` : ""}</div>
+      ${cases && !cur ? `<p class="muted" style="margin:0">Toutes les cases de ce rangement sont occupées. Choisis un autre rangement${rgs.length > 1 ? " dans les onglets" : ""}.</p>` : `<p class="muted" style="margin:0;font-size:13px">${cases ? "Touche le vin qui se trouve dans cette case." : "Touche chaque vin rangé ici."}</p>
+      <label class="search" style="max-width:none"><input id="rg-f" placeholder="Chercher un vin (2 lettres suffisent)…" value="${esc(R.filtre)}" autocomplete="off"></label>
+      <div class="rg-vins" id="rg-vins"></div>`}</section>
+    ${cases ? `<section class="card rg-plan"><div class="row" style="justify-content:space-between"><h2>${esc(nomRg(r))}</h2><span class="muted" style="font-size:12px">Touche une case pour y aller</span></div><div class="rg-grille" style="--cols:${r.colonnes}"><span></span>${Array.from({ length: r.colonnes }, (_, c) => `<span class="rg-h">${esc(labC(r, c + 1))}</span>`).join("")}${Array.from({ length: r.lignes }, (_, l) => `<span class="rg-h">${esc(labL(r, l + 1))}</span>${Array.from({ length: r.colonnes }, (_, c) => cell(l + 1, c + 1)).join("")}`).join("")}</div></section>` : ""}</div>`;
+  const dernier = R.hist.length && S.d.bouteilles.find((x) => x.id === R.hist[R.hist.length - 1])?.vin_id;
+  const liste = () => {
+    const z = $("#rg-vins"); if (!z) return;
+    const f = normE(R.filtre);
+    const vs = reste.filter(({ v }) => !f || normE([v.domaine, v.cuvee, v.millesime, v.appellation].join(" ")).includes(f))
+      .sort((a, b) => (b.v.id === dernier) - (a.v.id === dernier) || String(a.v.domaine).localeCompare(b.v.domaine) || (a.v.millesime ?? 0) - (b.v.millesime ?? 0));
+    z.innerHTML = vs.map(({ v, n }) => `<button type="button" class="rg-v${v.id === dernier ? " dern" : ""}" data-v="${v.id}"><img src="${esc(pic(v))}" alt=""><span><b>${esc(v.domaine)}</b><small>${esc([v.cuvee, v.millesime ?? "NM"].filter(Boolean).join(" · "))}</small></span><em>×${n}</em></button>`).join("") || `<p class="muted">Aucun vin non rangé ne correspond.</p>`;
+    z.querySelectorAll("[data-v]").forEach((el) => (el.onclick = async () => {
+      z.querySelectorAll("[data-v]").forEach((x) => (x.disabled = true));
+      const bt = S.d.bouteilles.find((x) => x.vin_id === el.dataset.v && x.statut === "en_cave" && !x.rangement_id); if (!bt) return vRanger();
+      let p = { rangement_id: r.id, ligne: null, colonne: null, emplacement: null };
+      if (cases) { const pris = new Set(deja.map((x) => (x.emplacement === ARR ? 2 : 1))); const d = [1, 2].slice(0, pr).find((k) => !pris.has(k)); p = { rangement_id: r.id, ligne: cur.l, colonne: cur.c, emplacement: d === 2 ? ARR : null }; }
+      await q(sb.from(T("bouteilles")).update(p).eq("id", bt.id)); Object.assign(bt, p); R.hist.push(bt.id);
+      await journal("deplacement", S.d.vins.find((x) => x.id === bt.vin_id), 1, `Rangement · ${emplacementTxt(bt)}`);
+      R.filtre = ""; if (cur) R.pos = cur.i; vRanger();
+    }));
+  };
+  liste();
+  const fi = $("#rg-f"); if (fi) fi.oninput = () => { R.filtre = fi.value; liste(); };
+  document.querySelectorAll(".rg-c:not([disabled])").forEach((el) => (el.onclick = () => { R.pos = +el.dataset.i; vRanger(); }));
+  if ($("#rg-vide")) $("#rg-vide").onclick = () => { R.pos = cur.i + 1; vRanger(); };
+  if ($("#rg-tabs")) $("#rg-tabs").onclick = (e) => { const t = e.target.closest("[data-r]"); if (t && t.dataset.r !== R.rid) { R.rid = t.dataset.r; R.pos = 1; vRanger(); } };
+  $("#rg-mode").onclick = () => { R.mode = "vin"; R.file = fileRanger(); R.i = 0; vRanger(); };
+  if ($("#rg-undo")) $("#rg-undo").onclick = annulerRangement;
+}
+function aRangerVins() {
+  const m = new Map(); for (const b of S.d.bouteilles) if (b.statut === "en_cave" && !b.rangement_id) m.set(b.vin_id, (m.get(b.vin_id) || 0) + 1);
+  return [...m].map(([id, n]) => ({ v: S.d.vins.find((x) => x.id === id), n })).filter((x) => x.v);
+}
 async function annulerRangement() {
   const R = S.rg, id = R?.hist.pop(); if (!id) return;
   const bt = S.d.bouteilles.find((x) => x.id === id); const v = S.d.vins.find((x) => x.id === bt?.vin_id);
+  const rg = S.d.rangements.find((x) => x.id === bt?.rangement_id);
+  if (rg && bt.ligne) { R.rid = rg.id; R.pos = (bt.ligne - 1) * rg.colonnes + bt.colonne; }
   await q(sb.from(T("bouteilles")).update({ rangement_id: null, ligne: null, colonne: null, emplacement: null }).eq("id", id));
   Object.assign(bt, { rangement_id: null, ligne: null, colonne: null, emplacement: null });
   R.i = Math.min(R.i, R.file.indexOf(id)); if (R.i < 0) R.i = 0;
