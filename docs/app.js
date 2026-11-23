@@ -22,6 +22,13 @@ let S = { user: null, slug: null, nom: "", view: "dashboard", arg: null, d: {}, 
 const T = (n) => `${S.slug}_${n}`;
 
 /* ---------------- Utilitaires UI ---------------- */
+// Écran de chargement bloquant : on attend la fin de l'estimation des prix
+function attente(txt, sous = "") {
+  let o = $("#attente"); if (txt == null) { o?.remove(); document.body.classList.remove("attente"); return; }
+  if (!o) { o = document.createElement("div"); o.id = "attente"; o.setAttribute("role", "alertdialog"); o.setAttribute("aria-live", "polite"); o.innerHTML = '<div class="box"><span class="spin"></span><b></b><div class="muted"></div><div class="barre"><i></i></div></div>'; document.body.appendChild(o); document.body.classList.add("attente"); }
+  o.querySelector("b").textContent = txt; o.querySelector(".muted").textContent = sous;
+}
+function attenteProgres(f, t) { const i = $("#attente .barre i"); if (i) i.style.width = Math.round((100 * Math.min(f, t)) / t) + "%"; const m = $("#attente .muted"); if (m) m.textContent = `${Math.min(f, t)} / ${t} vins · merci de patienter`; }
 function toast(msg) { const t = $("#toast"); t.textContent = msg; t.classList.add("on"); clearTimeout(toast.h); toast.h = setTimeout(() => t.classList.remove("on"), 2800); }
 function modal(html, onReady) {
   const m = $("#modal"); m.innerHTML = `<form method="dialog" class="dlg">${html}</form>`;
@@ -616,11 +623,10 @@ async function revalImport(ids = null) {
   if (!vins.length || S.demo || S.revalEnCours) return;
   S.revalEnCours = true; lsSet("reval-tente2", JSON.stringify([...essayes, ...vins.map((v) => v.id)].slice(-2000)));
   const n = vins.length, pl = n > 1 ? "s" : "";
-  const bandeau = (txt) => { const t = $("#toast"); t.textContent = txt; t.classList.add("on"); clearTimeout(toast.h); };
-  bandeau(`Estimation du prix de ${n} vin${pl} en cours…`);
-  // Prix estimé immédiatement pour tous ; l'écran se met à jour à chaque lot ; l'actualisation serveur repasse tous les 15 jours
-  let est = 0; try { est = await estimerClaude(vins, async (f, t) => { bandeau(`Estimation des prix : ${Math.min(f, t)} / ${t} vins…`); await refresh(); }); } catch (e) { console.warn(e); }
-  S.revalEnCours = false; await refresh();
+  attente(`Estimation du prix de ${n} vin${pl}`, `0 / ${n} vins · merci de patienter`); attenteProgres(0, n);
+  // Prix estimé immédiatement pour tous, écran bloqué jusqu'à la fin ; l'actualisation serveur repasse tous les 15 jours
+  let est = 0; try { est = await estimerClaude(vins, (f, t) => attenteProgres(f, t)); } catch (e) { console.warn(e); }
+  S.revalEnCours = false; try { await refresh(); } finally { attente(null); }
   toast(est ? `Prix estimé pour ${est} vin${est > 1 ? "s" : ""} sur ${n}.` : "Aucune estimation obtenue : ajoutez une cote depuis la fiche du vin.");
 }
 
@@ -1636,7 +1642,7 @@ async function enregistrerScan() {
     await journal("entree", vin, n, `${SCAN.mode === "etiquette" ? "Scan" : SCAN.mode === "saisie" ? "Saisie" : "Recherche"} · ${places[0]?.rangement_id ? emplacementTxt({ ...places[0], statut: "en_cave" }) : "non rangée"}${row.fournisseur ? " · " + row.fournisseur : ""}`, row.prix_achat ? row.prix_achat * n : null);
     // Prix estimé tout de suite (mémoire de Claude, vérifiée chez les cavistes en ligne pour les vins chers)
     let estime = "";
-    if (row.valeur_unitaire == null) { btn.innerHTML = '<span class="spin"></span> Estimation du prix…'; try { if (await estimerClaude([vin])) estime = " · valeur estimée"; } catch (er) { console.warn(er); } }
+    if (row.valeur_unitaire == null) { btn.innerHTML = '<span class="spin"></span> Estimation du prix…'; attente("Estimation du prix", "Recherche chez les cavistes en ligne · merci de patienter"); try { if (await estimerClaude([vin])) estime = " · valeur estimée"; } catch (er) { console.warn(er); } finally { attente(null); } }
     SCAN = { mode: "etiquette", fichiers: [], res: null };
     toast(`${n} bouteille${n > 1 ? "s" : ""} ajoutée${n > 1 ? "s" : ""}${estime}.`);
     await charger(); go("vin-" + vin.id);
