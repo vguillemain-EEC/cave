@@ -473,3 +473,23 @@ body.attente .tabbar{display:none}
 .btn.google:hover{background:#f7f8f8}
 .ou{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:12px}
 .ou::before,.ou::after{content:"";flex:1;height:1px;background:var(--line,rgba(127,127,127,.25))}
+/* Ranger mes vins : un vin après l'autre */
+.rg-prog{height:6px;border-radius:3px;background:rgba(127,127,127,.18);overflow:hidden;margin:-6px 0 4px}
+.rg-prog i{display:block;height:100%;background:var(--wine);transition:width .3s}
+.rg-vin{display:grid;grid-template-columns:72px 1fr;gap:14px;align-items:center}
+.rg-ph{width:72px;height:96px;object-fit:cover;border-radius:10px;background:var(--sunk,rgba(127,127,127,.12))}
+.rg-tabs{overflow-x:auto;max-width:100%;flex-wrap:nowrap}
+.rg-tabs button{white-space:nowrap}
+.rg-tabs small{opacity:.7;font-size:11px}
+.rg-grille{display:grid;grid-template-columns:28px repeat(var(--cols),minmax(42px,1fr));gap:4px;overflow-x:auto;padding-bottom:4px}
+.rg-h{display:grid;place-items:center;font-size:11px;color:var(--muted);font-family:var(--mono,monospace)}
+.rg-c{min-height:42px;border-radius:8px;border:1.5px dashed var(--line,rgba(127,127,127,.35));background:transparent;color:var(--muted);font:600 11px var(--mono,monospace);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;cursor:pointer;padding:2px;touch-action:manipulation}
+.rg-c:not([disabled]):hover{border-color:var(--wine);color:var(--wine)}
+.rg-c.plein{border-style:solid;background:var(--sunk,rgba(127,127,127,.12));cursor:default;opacity:.75}
+.rg-c.moitie{border-style:solid}
+.rg-c b{width:10px;height:10px;border-radius:50%}
+.rg-c span{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rg-c.sug{border:2px solid var(--wine);color:var(--wine);background:var(--wine-soft);animation:rgsug 1.4s ease-in-out infinite}
+@keyframes rgsug{50%{box-shadow:0 0 0 4px var(--wine-soft)}}
+.choix-rg{display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;padding:12px 14px;height:auto}
+.choix-rg small{font-weight:400;opacity:.8}
