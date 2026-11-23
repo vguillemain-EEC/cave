@@ -1,0 +1,32 @@
+{
+  "name": "Cave",
+  "short_name": "Cave",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#12141A",
+  "theme_color": "#7B1E3A",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "icon-180.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    }
+  ],
+  "description": "Votre cave à vin en 3D : scan d'étiquette, apogée, valeur, suggestions.",
+  "lang": "fr",
+  "categories": [
+    "lifestyle",
+    "food"
+  ],
+  "id": "./"
+}
