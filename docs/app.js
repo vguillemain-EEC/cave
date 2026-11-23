@@ -614,9 +614,8 @@ async function revalImport(ids = null) {
   if (!vins.length || S.demo || S.revalEnCours) return;
   S.revalEnCours = true; lsSet("reval-tente2", JSON.stringify([...essayes, ...vins.map((v) => v.id)].slice(-2000)));
   toast(`Recherche de la cote de ${vins.length} vin${vins.length > 1 ? "s" : ""}…`);
-  const rates = [];
-  let ok = 0; for (const v of vins) { try { if (await reevaluer(v, true)) ok++; else rates.push(v); } catch (e) { console.warn(e); rates.push(v); } await pause(350); }
-  let est = 0; if (rates.length) { try { est = await estimerClaude(rates); } catch (e) { console.warn(e); } }
+  // Prix estimé immédiatement pour tous (wineapi.io n'a presque jamais de prix) ; l'actualisation serveur repasse tous les 15 jours
+  const ok = 0; let est = 0; try { est = await estimerClaude(vins); } catch (e) { console.warn(e); }
   S.revalEnCours = false;
   toast(`${ok ? `Cote trouvée pour ${ok} vin${ok > 1 ? "s" : ""}. ` : ""}${est ? `${est} estimation${est > 1 ? "s" : ""} pour les vins sans cote publiée.` : ""}`.trim() || "Aucune cote trouvée : ajoutez une cote depuis la fiche du vin."); refresh();
 }
@@ -1568,7 +1567,7 @@ function formulaireAjout(z) {
     const lu = et[k]?.valeur ?? null, conf = et[k]?.confiance ?? 0, src = wa[k] ?? (k === "gamme" ? es.gamme : null);
     const val = lu ?? src ?? "";
     const conflit = lu != null && src != null && String(lu).toLowerCase().trim() !== String(src).toLowerCase().trim();
-    return `<div class="muted">${l}</div><div>${lu != null ? esc(lu) + `<span class="conf ${conf >= 85 ? "ok" : "mid"}">lu ${conf} %</span>` : '<span class="muted">—</span>'}</div><div style="color:var(--wine)">${src != null ? esc(src) : '<span class="muted">—</span>'}${conflit ? `<div class="conflict">Écart avec l'étiquette</div>` : ""}</div><div>${champInput(k, t, val, "n")}</div>`;
+    return `<div class="cmpr"><div class="l muted">${l}${lu != null ? `<span class="conf ${conf >= 85 ? "ok" : "mid"} m">lu ${conf} %</span>` : ""}</div><div class="e">${lu != null ? `<span class="t">${esc(lu)}</span><span class="conf ${conf >= 85 ? "ok" : "mid"}">lu ${conf} %</span>` : '<span class="muted">—</span>'}</div><div class="w${src != null ? "" : " vide"}" style="color:var(--wine)">${src != null ? `<span class="m muted">${esc(r.source || (r.wineapi ? "wineapi.io" : "Source"))} : </span>${esc(src)}` : '<span class="muted">—</span>'}${conflit ? `<div class="conflict">Écart avec l'étiquette</div>` : ""}</div><div class="v">${champInput(k, t, val, "n")}</div></div>`;
   }).join("");
   const garde = [["maturite_debut", "Maturité dès"], ["apogee_debut", "Apogée de"], ["apogee_fin", "Apogée à"], ["declin_debut", "Déclin dès"]];
   const cep = (r.wineapi?.grapes?.length ? r.wineapi.grapes.map((g) => ({ nom: g.name, pct: null })) : es.cepages || []);
@@ -1577,7 +1576,7 @@ function formulaireAjout(z) {
   z.innerHTML = `<div class="grid">
     <section class="card c8"><div class="row" style="justify-content:space-between"><h2>${SCAN.mode === "saisie" ? "Saisie manuelle" : "Lu sur l'étiquette / Complété automatiquement"}</h2>${r.duree_ms ? `<span class="chip">${(r.duree_ms / 1000).toFixed(1)} s</span>` : ""}</div>
       ${SCAN.mode === "saisie" && !SCAN.res ? `<div class="form">${CHAMPS.slice(0, 11).map(([k, l, t]) => `<label class="f">${l}${champInput(k, t, "", "n")}</label>`).join("")}</div>` :
-      `<div style="overflow-x:auto"><div class="cmp" style="grid-template-columns:110px 1fr 1fr 1.2fr;min-width:560px"><div class="h">Champ</div><div class="h">Étiquette</div><div class="h">${esc(r.source || (r.wineapi ? "wineapi.io" : "Sources"))}</div><div class="h">Valeur retenue</div>${lignes}</div></div>
+      `<div class="cmp4"><div class="cmpr h"><div>Champ</div><div>Étiquette</div><div>${esc(r.source || (r.wineapi ? "wineapi.io" : "Sources"))}</div><div>Valeur retenue</div></div>${lignes}</div>
       <div class="src">Sources :${r.sources?.etiquette ? `<span class="s">${esc(r.sources.etiquette)}</span>` : ""}${r.wineapi ? `<span class="s">wineapi.io${r.wineapi_confiance ? " · confiance " + Math.round(r.wineapi_confiance * (r.wineapi_confiance <= 1 ? 100 : 1)) + " %" : ""}</span>` : `<span>· vin non trouvé sur wineapi.io</span>`}${r.source ? `<span class="s">${esc(r.source)}</span>` : ""}</div>
       <div class="note">L'étiquette fait foi : en cas d'écart, la valeur lue est proposée par défaut. Tu peux tout corriger.</div>`}
       <h2>Garde</h2><div class="form">${garde.map(([k, l]) => `<label class="f">${l}${champInput(k, "garde", es[k], "n")}</label>`).join("")}</div>
@@ -1631,8 +1630,11 @@ async function enregistrerScan() {
       }
     }
     await journal("entree", vin, n, `${SCAN.mode === "etiquette" ? "Scan" : SCAN.mode === "saisie" ? "Saisie" : "Recherche"} · ${places[0]?.rangement_id ? emplacementTxt({ ...places[0], statut: "en_cave" }) : "non rangée"}${row.fournisseur ? " · " + row.fournisseur : ""}`, row.prix_achat ? row.prix_achat * n : null);
+    // Prix estimé tout de suite (mémoire de Claude, vérifiée chez les cavistes en ligne pour les vins chers)
+    let estime = "";
+    if (row.valeur_unitaire == null) { btn.innerHTML = '<span class="spin"></span> Estimation du prix…'; try { if (await estimerClaude([vin])) estime = " · valeur estimée"; } catch (er) { console.warn(er); } }
     SCAN = { mode: "etiquette", fichiers: [], res: null };
-    toast(`${n} bouteille${n > 1 ? "s" : ""} ajoutée${n > 1 ? "s" : ""}.`);
+    toast(`${n} bouteille${n > 1 ? "s" : ""} ajoutée${n > 1 ? "s" : ""}${estime}.`);
     await charger(); go("vin-" + vin.id);
   } catch (e) { btn.disabled = false; btn.textContent = "Ajouter à la cave"; toast("Enregistrement impossible : " + e.message); }
 }
@@ -2025,3 +2027,10 @@ function importExcel() {
 }
 
 demarrer();
+
+// iPhone : barre du bas masquée pendant la saisie, puis remise en place (iOS la laisse flotter après le clavier)
+{
+  const champ = (e) => e.target.matches?.("input:not([type=checkbox]):not([type=radio]):not([type=file]), select, textarea");
+  document.addEventListener("focusin", (e) => { if (champ(e)) document.body.classList.add("saisie"); });
+  document.addEventListener("focusout", (e) => { if (champ(e)) setTimeout(() => { if (!document.activeElement?.matches?.("input, select, textarea")) { document.body.classList.remove("saisie"); window.scrollTo(window.scrollX, window.scrollY); } }, 120); });
+}

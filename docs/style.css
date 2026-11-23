@@ -438,3 +438,24 @@ html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
 .ar-choix small{color:var(--muted,#6b7280);font-size:11.5px}
 @media (max-width:640px){.rp-rendu svg{max-height:150px}.rp-vues{grid-template-columns:minmax(0,1.6fr) minmax(0,1fr)!important}.ar-prev svg{max-height:220px}.ar-choix{grid-template-columns:1fr 1fr}}
 .sans-cote{display:inline-block;margin-top:4px;font-size:12px;font-weight:600;color:#c0392b;text-decoration:none}
+/* Tableau du scan : 4 colonnes sur ordinateur, fiches empilées sur téléphone */
+.cmp4{font-size:13px}
+.cmpr{display:grid;grid-template-columns:110px 1fr 1fr 1.2fr;border-bottom:1px solid var(--line)}
+.cmpr>div{padding:8px 10px;min-width:0}
+.cmpr.h>div{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600}
+.cmpr .m{display:none}
+.conf{white-space:nowrap;display:inline-block}
+@media(max-width:640px){
+  .cmpr.h{display:none}
+  .cmpr{grid-template-columns:1fr;padding:6px 0}
+  .cmpr>div{padding:2px 0}
+  .cmpr .e{display:none}
+  .cmpr .m{display:inline}
+  .cmpr .l{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px}
+  .cmpr .w{font-size:12px;order:3}
+  .cmpr .w.vide{display:none}
+  .cmpr .v{order:2}
+  .cmpr .v input,.cmpr .v select{width:100%}
+}
+/* iPhone : la barre du bas se cache pendant la saisie (sinon iOS la laisse flotter au milieu de l'écran) */
+body.saisie .tabbar{display:none}
