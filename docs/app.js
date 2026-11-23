@@ -590,10 +590,10 @@ async function reevaluerTout() {
 }
 
 // Quand wineapi.io n'a aucun prix : estimation de la valeur de marché par Claude (affichée comme « Estimation »)
-async function estimerClaude(vins) {
-  let ok = 0;
-  for (let i = 0; i < vins.length; i += 40) {
-    const lot = vins.slice(i, i + 40);
+async function estimerClaude(vins, progres = null) {
+  let ok = 0, faits = 0; const lots = []; for (let i = 0; i < vins.length; i += 15) lots.push(vins.slice(i, i + 15));
+  // Lots de 15 traités 3 par 3 en parallèle : les premiers prix arrivent en quelques secondes
+  const traiter = async (lot) => {
     const r = await callFn("cote", { vins: lot.map((v) => [v.id, v.domaine, v.cuvee, v.millesime, v.appellation ?? v.region, v.couleur, v.conditionnement || "75 cl"].map((x) => x ?? "").join(" | ")) });
     for (const c of r?.cotes || []) {
       const v = lot.find((x) => x.id === c.id), prix = Math.round(+c.prix * 100) / 100; if (!v || !(prix > 0)) continue;
@@ -604,7 +604,9 @@ async function estimerClaude(vins) {
       await q(sb.from(T("vins")).update({ valeur_unitaire: prix, valeur_maj: new Date().toISOString(), valeur_sources: vs }).eq("id", v.id));
       await journal("reevaluation", v, 0, web.length ? `Cote ${eur(prix)} relevée chez ${web.length} caviste${web.length > 1 ? "s" : ""} en ligne` : `Estimation ${eur(prix)} (wineapi.io sans prix pour ce vin)`, prix); ok++;
     }
-  }
+    faits += lot.length; if (progres) await progres(faits, vins.length);
+  };
+  for (let i = 0; i < lots.length; i += 3) await Promise.all(lots.slice(i, i + 3).map((l) => traiter(l).catch((e) => console.warn(e))));
   return ok;
 }
 // Cote automatique des vins en cave sans valeur (après un import, ou à l'ouverture) : wineapi.io d'abord, sinon estimation
@@ -613,11 +615,13 @@ async function revalImport(ids = null) {
   const vins = (ids ? S.d.vins.filter((v) => ids.includes(v.id)) : S.d.vins.filter((v) => !v.valeur_maj && valU(v) == null && qte(v.id) > 0)).filter((v) => !essayes.includes(v.id));
   if (!vins.length || S.demo || S.revalEnCours) return;
   S.revalEnCours = true; lsSet("reval-tente2", JSON.stringify([...essayes, ...vins.map((v) => v.id)].slice(-2000)));
-  toast(`Recherche de la cote de ${vins.length} vin${vins.length > 1 ? "s" : ""}…`);
-  // Prix estimé immédiatement pour tous (wineapi.io n'a presque jamais de prix) ; l'actualisation serveur repasse tous les 15 jours
-  const ok = 0; let est = 0; try { est = await estimerClaude(vins); } catch (e) { console.warn(e); }
-  S.revalEnCours = false;
-  toast(`${ok ? `Cote trouvée pour ${ok} vin${ok > 1 ? "s" : ""}. ` : ""}${est ? `${est} estimation${est > 1 ? "s" : ""} pour les vins sans cote publiée.` : ""}`.trim() || "Aucune cote trouvée : ajoutez une cote depuis la fiche du vin."); refresh();
+  const n = vins.length, pl = n > 1 ? "s" : "";
+  const bandeau = (txt) => { const t = $("#toast"); t.textContent = txt; t.classList.add("on"); clearTimeout(toast.h); };
+  bandeau(`Estimation du prix de ${n} vin${pl} en cours…`);
+  // Prix estimé immédiatement pour tous ; l'écran se met à jour à chaque lot ; l'actualisation serveur repasse tous les 15 jours
+  let est = 0; try { est = await estimerClaude(vins, async (f, t) => { bandeau(`Estimation des prix : ${Math.min(f, t)} / ${t} vins…`); await refresh(); }); } catch (e) { console.warn(e); }
+  S.revalEnCours = false; await refresh();
+  toast(est ? `Prix estimé pour ${est} vin${est > 1 ? "s" : ""} sur ${n}.` : "Aucune estimation obtenue : ajoutez une cote depuis la fiche du vin.");
 }
 
 /* ---------------- Mes vins ---------------- */
