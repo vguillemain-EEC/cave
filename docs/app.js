@@ -226,7 +226,7 @@ function route() {
   const h = decodeURIComponent(location.hash.slice(1)) || "dashboard";
   const [v, ...rest] = h.split("-"); S.view = v; S.arg = rest.join("-") || null;
   nav();
-  const V = { scan: S.demo ? () => { vDashboard(); etapeCreation(); } : vScan, dashboard: vDashboard, vins: vVins, vin: vFiche, ranger: vRanger, journal: vJournal, compte: vCompte, parrainez: () => { vCompte(); requestAnimationFrame(() => { const z = $("#parrain"); if (z) { z.scrollIntoView({ behavior: "smooth", block: "start" }); z.classList.add("flash"); $("#parnote")?.focus({ preventScroll: true }); } }); } }[S.view] || vDashboard;
+  const V = { scan: S.demo ? () => { vDashboard(); etapeCreation(); } : vScan, dashboard: vDashboard, vins: vVins, vin: vFiche, ranger: vRanger, admin: () => (estAdmin() ? vAdmin() : vDashboard()), journal: vJournal, compte: vCompte, parrainez: () => { vCompte(); requestAnimationFrame(() => { const z = $("#parrain"); if (z) { z.scrollIntoView({ behavior: "smooth", block: "start" }); z.classList.add("flash"); $("#parnote")?.focus({ preventScroll: true }); } }); } }[S.view] || vDashboard;
   if (S.vue3d) { S.vue3d.dispose(); S.vue3d = null; }
   $("#view").innerHTML = ""; V(); window.scrollTo(0, 0);
   if (S.demo) $("#view").insertAdjacentHTML("afterbegin", `<div class="banner demo-bar"><span><b>Cave de démonstration</b> · 25 vins pour découvrir l'appli</span><span class="row" style="gap:8px"><button class="btn sm" data-act="tuto">Revoir le tutoriel</button><button class="btn sm primary" data-act="creer">Créer ma cave</button></span></div>`);
@@ -1885,7 +1885,7 @@ function vJournal() {
 
 /* ---------------- Compte ---------------- */
 function vCompte() {
-  $("#view").innerHTML = `<div class="head"><div><div class="eyebrow">Compte</div><h1>${esc(S.nom)}</h1></div></div>
+  $("#view").innerHTML = `<div class="head"><div><div class="eyebrow">Compte</div><h1>${esc(S.nom)}</h1></div>${estAdmin() ? `<a class="btn primary" href="#admin">Tableau de bord des comptes</a>` : ""}</div>
   <div class="grid"><section class="card c6"><h2>Changer le mot de passe</h2><form id="fmdp" class="stack"><label class="f">Nouveau mot de passe<input id="m1" type="password" minlength="10" autocomplete="new-password" required></label><label class="f">Confirmer<input id="m2" type="password" autocomplete="new-password" required></label><div class="err" id="merr"></div><button class="btn primary">Enregistrer</button></form></section>
   <section class="card c6"><h2>Session</h2><p class="muted" style="margin:0">Identifiant : <span class="num">${esc(S.slug)}</span></p><button class="btn" id="out">Se déconnecter</button>
   <div id="glien"></div>
@@ -1979,6 +1979,36 @@ async function vueInvitation(code) {
       history.replaceState(null, "", location.pathname); demarrer();
     } catch (x) { err.textContent = x.message; btn.disabled = false; btn.textContent = "Créer mon compte"; }
   };
+}
+
+
+/* ---------------- Tableau de bord administrateur ---------------- */
+async function vAdmin() {
+  $("#view").innerHTML = `<div class="head"><div><div class="eyebrow">Administration</div><h1>Suivi des comptes</h1></div><div class="row" style="gap:8px"><button class="btn" id="adm-maj">Actualiser</button><a class="btn" href="#compte">Retour</a></div></div><div id="adm"><div class="empty"><span class="spin"></span></div></div>`;
+  $("#adm-maj").onclick = vAdmin;
+  let D; try { const { data, error } = await sb.rpc("admin_tableau"); if (error) throw error; D = data; } catch (e) { $("#adm").innerHTML = `<section class="card"><p class="err">Tableau indisponible : ${esc(e.message)}</p></section>`; return; }
+  const C = D.comptes || [], somme = (k) => C.reduce((t, c) => t + (+c[k] || 0), 0);
+  const j7 = Date.now() - 7 * 864e5, actifs = C.filter((c) => (c.derniere_activite && new Date(c.derniere_activite) > j7) || (c.derniere_connexion && new Date(c.derniere_connexion) > j7)).length;
+  const depuis = (d) => { if (!d) return "jamais"; const m = (Date.now() - new Date(d)) / 6e4; return m < 60 ? `il y a ${Math.max(1, Math.round(m))} min` : m < 1440 ? `il y a ${Math.round(m / 60)} h` : m < 2880 ? "hier" : `il y a ${Math.round(m / 1440)} j`; };
+  const pct = (a, b) => (b ? Math.round((100 * a) / b) + " %" : "—");
+  const usd = (n) => (n ? "$" + (+n).toFixed(2) : "—");
+  const tri = S.ui.admTri || "derniere_connexion";
+  const cles = { nom: (c) => String(c.nom).toLowerCase(), derniere_connexion: (c) => -new Date(c.derniere_connexion || 0), bouteilles: (c) => -c.bouteilles, valeur: (c) => -c.valeur, cree_le: (c) => -new Date(c.cree_le) };
+  const rows = C.slice().sort((a, b) => { const f = cles[tri] || cles.derniere_connexion, x = f(a), y = f(b); return x < y ? -1 : x > y ? 1 : 0; });
+  const kpi = (v, l) => `<section class="card c2 adm-k"><div class="big num">${v}</div><div class="muted">${l}</div></section>`;
+  const th = (k, l) => `<th${cles[k] ? ` data-tri="${k}" class="tri${tri === k ? " on" : ""}"` : ""}>${l}</th>`;
+  $("#adm").innerHTML = `<div class="grid">
+    ${kpi(C.length, "comptes")}${kpi(actifs, "actifs sur 7 jours")}${kpi(somme("bouteilles").toLocaleString("fr-FR"), "bouteilles en cave")}${kpi(eur(somme("valeur")), "valeur totale")}${kpi(somme("bouteilles_importees").toLocaleString("fr-FR"), `bouteilles importées (${somme("imports")} import${somme("imports") > 1 ? "s" : ""})`)}${kpi(usd(somme("cout_mois_usd")), "coût IA du mois")}
+    <section class="card c12"><div class="row" style="justify-content:space-between"><h2>Comptes</h2><span class="muted" style="font-size:12px">Mis à jour ${new Date(D.genere_le).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })} · clique un titre pour trier</span></div>
+    <div class="adm-t"><table><thead><tr>${th("nom", "Compte")}${th("cree_le", "Inscrit")}${th("derniere_connexion", "Connexion")}<th>Activité</th>${th("bouteilles", "Bouteilles")}<th>Vins</th><th>Rangées</th><th>Valorisés</th><th>Importées</th><th>Scans</th><th>Caves</th>${th("valeur", "Valeur")}<th>IA du mois</th></tr></thead>
+    <tbody>${rows.map((c) => `<tr><td><b>${esc(c.nom)}</b>${c.google ? ' <span class="chip adm-g">Google</span>' : ""}<div class="muted">${esc(c.slug)}${c.parrain ? " · parrainé par " + esc(c.parrain) : ""}</div></td>
+      <td>${dfr(c.cree_le)}</td><td>${depuis(c.derniere_connexion)}</td><td>${c.derniere_activite ? depuis(c.derniere_activite) : "—"}${c.mouvements_7j ? `<div class="muted">${c.mouvements_7j} mvt / 7 j</div>` : ""}</td>
+      <td class="num"><b>${(c.bouteilles ?? 0).toLocaleString("fr-FR")}</b>${c.sorties ? `<div class="muted">${c.sorties} sortie${c.sorties > 1 ? "s" : ""}</div>` : ""}</td><td class="num">${c.vins_en_cave ?? 0}</td>
+      <td class="num">${c.bouteilles ? `${pct(c.rangees, c.bouteilles)}<div class="muted">${c.rangees}</div>` : "—"}</td><td class="num">${c.vins ? pct(c.valorises, c.vins) : "—"}</td>
+      <td class="num">${c.bouteilles_importees || "—"}</td><td class="num">${c.scans || "—"}</td><td class="num">${c.caves ?? 0}<div class="muted">${c.rangements ?? 0} rgt</div></td>
+      <td class="num">${c.valeur ? eur(c.valeur) : "—"}</td><td class="num">${usd(c.cout_mois_usd)}<div class="muted">${c.appels_mois || 0} appels</div></td></tr>`).join("")}</tbody></table></div></section>
+    <section class="card c12"><h2>Appels aux services ce mois-ci</h2><div class="row" style="gap:8px;flex-wrap:wrap">${Object.entries(D.services_mois || {}).sort((a, b) => b[1] - a[1]).map(([k, n]) => `<span class="chip">${esc(k)} : ${n}</span>`).join("") || '<span class="muted">Aucun appel.</span>'}</div></section></div>`;
+  document.querySelectorAll("[data-tri]").forEach((x) => (x.onclick = () => { S.ui.admTri = x.dataset.tri; vAdmin(); }));
 }
 
 /* ---------------- Consommation (refacturation) ---------------- */

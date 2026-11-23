@@ -508,3 +508,20 @@ body.attente .tabbar{display:none}
 .rg-v em{font-style:normal;color:var(--muted);font-size:12px}
 .rg-v.dern{border:2px solid var(--wine);background:var(--wine-soft)}
 @media (max-width:900px){.rg-zone .rg-qui,.rg-zone .rg-plan{grid-column:1/-1}.rg-vins{max-height:none}}
+/* Tableau de bord administrateur */
+.adm-k .big{font-size:26px;font-weight:700}
+.adm-k .muted{font-size:12px}
+.adm-t{overflow-x:auto;margin:0 -4px}
+.adm-t table{width:100%;border-collapse:collapse;font-size:13px;min-width:980px}
+.adm-t th{text-align:left;font-weight:600;color:var(--muted);font-size:12px;padding:8px 6px;border-bottom:1px solid var(--line,rgba(127,127,127,.25));white-space:nowrap}
+.adm-t th.tri{cursor:pointer}
+.adm-t th.tri.on{color:var(--wine)}
+.adm-t th.tri::after{content:" ↕";opacity:.4}
+.adm-t td{padding:8px 6px;border-bottom:1px solid var(--line,rgba(127,127,127,.15));vertical-align:top}
+.adm-t td .muted{font-size:11px}
+.adm-t td.num{text-align:right;white-space:nowrap}
+.adm-g{font-size:10px;padding:1px 6px}
+@media (max-width:640px){.adm-k{grid-column:span 6}}
+.c2{grid-column:span 2}
+@media (max-width:1000px){.c2{grid-column:span 4}}
+@media (max-width:640px){.c2{grid-column:span 6}}
