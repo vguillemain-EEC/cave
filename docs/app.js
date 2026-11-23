@@ -433,7 +433,7 @@ function vDashboard() {
     <section class="card c12 cesoir" id="cesoir"></section>
     ${blocAccord()}
     <section class="card c8"><div class="row" style="justify-content:space-between"><h2>Valeur de la cave</h2><div class="seg" id="per">${[[3, "3M"], [12, "1A"], [60, "5A"]].map(([m, l]) => `<button data-p="${m}" aria-pressed="${per === m}">${l}</button>`).join("")}</div></div>
-      <div class="row" style="gap:28px;align-items:flex-end"><div><div class="big">${eur(val)}</div><div class="muted">Valeur de marché estimée</div></div>
+      <div class="row" style="gap:28px;align-items:flex-end"><div><div class="big">${eur(val)}</div><div class="muted">Valeur de marché estimée</div>${(() => { const n = vins.filter((v) => qte(v.id) && valU(v) == null).length; return n ? `<a href="#vins" class="sans-cote">${n} vin${n > 1 ? "s" : ""} sans cote, non compté${n > 1 ? "s" : ""}</a>` : ""; })()}</div>
       <div><div class="num ${gain >= 0 ? "up" : "down"}" style="font-size:18px;font-weight:600">${gain >= 0 ? "+" : ""}${eur(gain)}</div><div class="muted">${achat ? `${gain >= 0 ? "+" : ""}${((gain / achat) * 100).toFixed(0)} % vs achat (${eur(achat)})` : "Prix d'achat non renseignés"}</div></div>
       <div><div class="num" style="font-size:18px;font-weight:600">${btl}</div><div class="muted">bouteilles · ${vins.length} références</div></div></div>
       ${courbe(serieValeur(per))}
