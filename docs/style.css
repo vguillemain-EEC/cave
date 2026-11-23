@@ -468,3 +468,8 @@ body.saisie .tabbar{display:none}
 #attente .barre i{display:block;height:100%;width:0;background:var(--wine,#7a1f2b);transition:width .4s}
 body.attente{overflow:hidden}
 body.attente .tabbar{display:none}
+/* Connexion Google */
+.btn.google{display:inline-flex;align-items:center;justify-content:center;gap:10px;background:#fff;color:#1f1f1f;border:1px solid #dadce0;font-weight:500}
+.btn.google:hover{background:#f7f8f8}
+.ou{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:12px}
+.ou::before,.ou::after{content:"";flex:1;height:1px;background:var(--line,rgba(127,127,127,.25))}

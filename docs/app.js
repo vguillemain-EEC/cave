@@ -2,7 +2,17 @@ import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { positions, longueurMur, PROF, geometrie, placer, urgence, URGENCE } from "./dispo.js?v=27";
 
 const CFG = window.CAVE_CONFIG;
-const sb = createClient(CFG.supabaseUrl, CFG.supabaseKey);
+const sb = createClient(CFG.supabaseUrl, CFG.supabaseKey, { auth: { flowType: "pkce" } });
+// Nouvelle version en ligne : on recharge la page (les iPhone gardent longtemps l'ancienne en cache)
+const VERSION = new URL(import.meta.url).searchParams.get("v");
+async function verifierVersion() {
+  try {
+    const h = await (await fetch("index.html?_=" + Date.now(), { cache: "no-store" })).text();
+    const v = h.match(/app\.js\?v=(\d+)/)?.[1];
+    if (v && VERSION && v !== VERSION && sessionStorage.getItem("cave-maj") !== v) { sessionStorage.setItem("cave-maj", v); location.reload(); }
+  } catch {}
+}
+verifierVersion(); document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") verifierVersion(); });
 const NOW = new Date().getFullYear();
 const $ = (s, r = document) => r.querySelector(s);
 const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -135,6 +145,14 @@ async function journal(type, vin, quantite, detail, valeur = null, motif = null)
 }
 
 /* ---------------- Auth ---------------- */
+const G_LOGO = '<svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="m6.3 14.7 6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg>';
+// Retour de Google avec une erreur (ex. compte Google lié à aucune cave : les inscriptions libres sont fermées)
+function erreurOAuth() {
+  const p = new URLSearchParams(location.search), h = new URLSearchParams(location.hash.slice(1));
+  const d = p.get("error_description") || h.get("error_description"); if (!d) return "";
+  history.replaceState(null, "", location.pathname);
+  return /signup|not allowed|sign ?up/i.test(d) ? "Ce compte Google n'est lié à aucune cave. Connecte-toi avec ton identifiant puis lie Google depuis « Compte », ou crée ton compte avec un code de parrainage." : /already|linked|exists/i.test(d) ? "Ce compte Google est déjà lié à une autre cave." : "Connexion Google impossible : " + d;
+}
 function vueLogin(err = "") {
   $("#app").innerHTML = `<div class="login"><div class="side"></div><div class="panel">
     <div class="brand" style="padding:0"><i></i>Cave</div>
@@ -145,7 +163,10 @@ function vueLogin(err = "") {
       <div class="err">${esc(err)}</div>
       <button class="btn primary" type="submit">Se connecter</button>
     </form>
+    <div class="ou"><span>ou</span></div>
+    <button class="btn google" id="lgoogle" type="button">${G_LOGO}Continuer avec Google</button>
     <form id="fcode" class="code-par"><span>Pas encore de compte ? Entre ton code de parrainage</span><div class="row" style="gap:8px;flex-wrap:nowrap"><input id="lcode" placeholder="XXXX-XXXX" autocapitalize="characters" autocomplete="off" maxlength="12" style="text-transform:uppercase"><button class="btn">Créer mon compte</button></div></form></div></div>`;
+  $("#lgoogle").onclick = () => sb.auth.signInWithOAuth({ provider: "google", options: { redirectTo: location.origin + location.pathname } });
   $("#fcode").onsubmit = (e) => { e.preventDefault(); const c = $("#lcode").value.toLowerCase().replace(/[^a-z0-9]/g, ""); if (c.length < 6) return toast("Code incomplet."); history.replaceState(null, "", "#invitation-" + c); vueInvitation(c); };
   $("#flogin").onsubmit = async (e) => {
     e.preventDefault();
@@ -156,11 +177,22 @@ function vueLogin(err = "") {
     demarrer();
   };
 }
+async function lienGoogle() {
+  const z = $("#glien"); if (!z) return;
+  const { data } = await sb.auth.getUserIdentities().catch(() => ({ data: null }));
+  const g = data?.identities?.find((i) => i.provider === "google");
+  z.innerHTML = g ? `<div class="row" style="justify-content:space-between;margin-top:8px"><span class="row" style="gap:8px">${G_LOGO}<span>Google lié${g.identity_data?.email ? " : " + esc(g.identity_data.email) : ""}</span></span><button class="btn sm" id="gdel">Délier</button></div>`
+    : `<p class="muted" style="margin:10px 0 4px;font-size:13px">Lie ton compte Google pour te connecter en un clic, sans mot de passe.</p><button class="btn google" id="gadd">${G_LOGO}Lier mon compte Google</button>`;
+  if ($("#gadd")) $("#gadd").onclick = async () => { const { error } = await sb.auth.linkIdentity({ provider: "google", options: { redirectTo: location.origin + location.pathname + "#compte" } }); if (error) toast("Liaison Google impossible : " + error.message); };
+  if ($("#gdel")) $("#gdel").onclick = async () => { const { error } = await sb.auth.unlinkIdentity(g); if (error) return toast("Impossible de délier : " + error.message); toast("Compte Google délié."); lienGoogle(); };
+}
 async function demarrer() {
   const { data } = await sb.auth.getUser();
   const invit = location.hash.match(/^#invitation-([A-Za-z0-9-]+)$/);
   if (!data.user && invit) return vueInvitation(invit[1].toLowerCase().replace(/[^a-z0-9]/g, ""));
-  if (!data.user) return vueLogin();
+  const errG = erreurOAuth();
+  if (!data.user) return vueLogin(errG);
+  if (errG) setTimeout(() => toast(errG), 800);
   S.user = data.user; S.slug = data.user.user_metadata?.slug; S.nom = data.user.user_metadata?.nom || S.slug;
   if (!S.slug) return vueLogin("Compte sans cave associée.");
   // Compte tout neuf : ses tables viennent d'être créées et le serveur peut mettre quelques secondes à les voir
@@ -1557,7 +1589,8 @@ function vScan() {
 }
 async function analyser() {
   const etat = $("#etat"); $("#go").disabled = true;
-  etat.innerHTML = `<div class="row"><span class="spin"></span><span class="muted">Lecture de l'étiquette et recherche des informations…</span></div>`;
+  etat.innerHTML = "";
+  attente(`Analyse de ${SCAN.fichiers.length} photo${SCAN.fichiers.length > 1 ? "s" : ""}`, "Lecture des étiquettes et recherche des informations · merci de patienter");
   try {
     SCAN.blobs = await Promise.all(SCAN.fichiers.map((f) => compresser(f)));
     const images = await Promise.all(SCAN.blobs.map(async (b) => ({ data: await b64(b), type: "image/jpeg" })));
@@ -1565,9 +1598,10 @@ async function analyser() {
     // Plusieurs vins différents sur les photos : on les enregistre l'un après l'autre
     SCAN.tous = res?.vins?.length ? res.vins.map((v) => ({ ...v, duree_ms: res.duree_ms, sources: res.sources })) : [res];
     SCAN.blobsTous = SCAN.blobs; scanVin(0);
+    attente(null);
     if (SCAN.tous.length > 1) toast(`${SCAN.tous.length} vins différents détectés : ils seront ajoutés l'un après l'autre.`);
     vScan();
-  } catch (e) { etat.innerHTML = `<p class="err">Analyse impossible : ${esc(e.message)}. Tu peux passer en saisie manuelle.</p>`; $("#go").disabled = false; }
+  } catch (e) { attente(null); etat.innerHTML = `<p class="err">Analyse impossible : ${esc(e.message)}. Tu peux passer en saisie manuelle.</p>`; $("#go").disabled = false; }
 }
 function scanVin(i) {
   SCAN.idx = i; const v = SCAN.tous[i]; SCAN.res = v;
@@ -1690,6 +1724,7 @@ function vCompte() {
   $("#view").innerHTML = `<div class="head"><div><div class="eyebrow">Compte</div><h1>${esc(S.nom)}</h1></div></div>
   <div class="grid"><section class="card c6"><h2>Changer le mot de passe</h2><form id="fmdp" class="stack"><label class="f">Nouveau mot de passe<input id="m1" type="password" minlength="10" autocomplete="new-password" required></label><label class="f">Confirmer<input id="m2" type="password" autocomplete="new-password" required></label><div class="err" id="merr"></div><button class="btn primary">Enregistrer</button></form></section>
   <section class="card c6"><h2>Session</h2><p class="muted" style="margin:0">Identifiant : <span class="num">${esc(S.slug)}</span></p><button class="btn" id="out">Se déconnecter</button>
+  <div id="glien"></div>
   <div class="note">Astuce : sur téléphone, « Ajouter à l'écran d'accueil » installe Cave comme une application.</div></section>
   <section class="card c12" id="parrain"><h2>Parrainage</h2><p class="muted" style="margin:0">Crée un code à donner de vive voix, par message ou sur un groupe. La personne choisit son identifiant et son mot de passe, et sa cave est créée aussitôt.</p>
     <form id="fpar" class="par-form">
@@ -1706,6 +1741,7 @@ function vCompte() {
     if (error) return ($("#merr").textContent = error.message);
     S.user.user_metadata.doit_changer_mdp = false; e.target.reset(); toast("Mot de passe modifié.");
   };
+  lienGoogle();
   $("#out").onclick = async () => { await sb.auth.signOut(); S = { ...S, user: null, d: {} }; vueLogin(); };
   parrainage();
   vConso();
