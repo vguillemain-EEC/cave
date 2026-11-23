@@ -584,7 +584,7 @@ async function reevaluer(v, silencieux = false) {
 }
 async function reevaluerTout() {
   const vins = vinsEnCave(); let ok = 0; toast(`Réévaluation de ${vins.length} vins…`);
-  const rates = []; for (const v of vins) { try { if (await reevaluer(v, true)) ok++; else if (valU(v) == null || String(v.valeur_sources?.[0]?.source).startsWith("Estimation")) rates.push(v); } catch (e) { console.warn(e); } await pause(350); }
+  const rates = []; for (const v of vins) { try { if (await reevaluer(v, true)) ok++; else if (valU(v) == null || String(v.valeur_sources?.[0]?.source).startsWith("Estimation") || v.valeur_sources?.[0]?.auto) rates.push(v); } catch (e) { console.warn(e); } await pause(350); }
   let est = 0; if (rates.length) { try { est = await estimerClaude(rates); } catch (e) { console.warn(e); } }
   toast(`${ok} vin${ok > 1 ? "s" : ""} réévalué${ok > 1 ? "s" : ""}${est ? `, ${est} estimé${est > 1 ? "s" : ""}` : ""} sur ${vins.length}.`); refresh();
 }
@@ -597,10 +597,12 @@ async function estimerClaude(vins) {
     const r = await callFn("cote", { vins: lot.map((v) => [v.id, v.domaine, v.cuvee, v.millesime, v.appellation ?? v.region, v.couleur, v.conditionnement || "75 cl"].map((x) => x ?? "").join(" | ")) });
     for (const c of r?.cotes || []) {
       const v = lot.find((x) => x.id === c.id), prix = Math.round(+c.prix * 100) / 100; if (!v || !(prix > 0)) continue;
+      const src = c.source || "Estimation Claude", web = (c.sources || []).filter((s) => s.prix > 0);
       const detail = `${c.note || "Estimation"} · fourchette ${eur(c.min)} – ${eur(c.max)} · confiance ${c.confiance || "moyenne"}`.slice(0, 300);
-      await q(sb.from(T("prix")).insert({ vin_id: v.id, source: "Estimation Claude", detail, prix, devise: "EUR", releve_le: new Date().toISOString() }));
-      await q(sb.from(T("vins")).update({ valeur_unitaire: prix, valeur_maj: new Date().toISOString(), valeur_sources: [{ source: "Estimation Claude", detail, prix, devise: "EUR" }] }).eq("id", v.id));
-      await journal("reevaluation", v, 0, `Estimation ${eur(prix)} (wineapi.io sans prix pour ce vin)`, prix); ok++;
+      await q(sb.from(T("prix")).insert({ vin_id: v.id, source: src, detail, prix, devise: "EUR", releve_le: new Date().toISOString() }));
+      const vs = web.length ? web.slice(0, 5).map((s) => ({ source: s.site, detail: "Caviste en ligne", prix: s.prix, devise: "EUR", url: s.url, auto: true })) : [{ source: src, detail, prix, devise: "EUR" }];
+      await q(sb.from(T("vins")).update({ valeur_unitaire: prix, valeur_maj: new Date().toISOString(), valeur_sources: vs }).eq("id", v.id));
+      await journal("reevaluation", v, 0, web.length ? `Cote ${eur(prix)} relevée chez ${web.length} caviste${web.length > 1 ? "s" : ""} en ligne` : `Estimation ${eur(prix)} (wineapi.io sans prix pour ce vin)`, prix); ok++;
     }
   }
   return ok;
